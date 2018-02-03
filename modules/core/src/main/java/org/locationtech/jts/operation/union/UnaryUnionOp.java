@@ -118,6 +118,7 @@ public class UnaryUnionOp
 	private List points = new ArrayList();
 	
 	private GeometryFactory geomFact = null;
+  private UnionFunction unionFunction = UnionFunction.CLASSIC;
 	
 	/**
 	 * Constructs a unary union operation for a {@link Collection} 
@@ -152,6 +153,10 @@ public class UnaryUnionOp
 	public UnaryUnionOp(Geometry geom)
 	{
 		extract(geom);
+	}
+	
+	public void setUnionFunction(UnionFunction unionFun) {
+	  this.unionFunction = unionFun;
 	}
 	
 	private void extract(Collection geoms)
@@ -213,7 +218,7 @@ public class UnaryUnionOp
 		
 		Geometry unionPolygons = null;
 		if (polygons.size() > 0) {
-			unionPolygons = CascadedPolygonUnion.union(polygons);
+			unionPolygons = CascadedPolygonUnion.union(polygons, unionFunction);
 		}
 		
     /**

@@ -56,35 +56,59 @@ import org.locationtech.jts.index.strtree.STRtree;
  */
 public class CascadedPolygonUnion 
 {
-	/**
-	 * Computes the union of
-	 * a collection of {@link Polygonal} {@link Geometry}s.
-	 * 
-	 * @param polys a collection of {@link Polygonal} {@link Geometry}s
-	 */
-	public static Geometry union(Collection polys)
-	{
-		CascadedPolygonUnion op = new CascadedPolygonUnion(polys);
-		return op.union();
-	}
-	
+  /**
+   * Computes the union of
+   * a collection of {@link Polygonal} {@link Geometry}s.
+   * 
+   * @param polys a collection of {@link Polygonal} {@link Geometry}s
+   */
+  public static Geometry union(Collection polys)
+  {
+    CascadedPolygonUnion op = new CascadedPolygonUnion(polys);
+    return op.union();
+  }
+  
+  /**
+   * Computes the union of
+   * a collection of {@link Polygonal} {@link Geometry}s.
+   * 
+   * @param polys a collection of {@link Polygonal} {@link Geometry}s
+   */
+  public static Geometry union(Collection polys, UnionFunction unionFun)
+  {
+    CascadedPolygonUnion op = new CascadedPolygonUnion(polys, unionFun);
+    return op.union();
+  }
+  
 	private Collection inputPolys;
 	private GeometryFactory geomFactory = null;
+  private UnionFunction unionFun;
 	
-	/**
-	 * Creates a new instance to union
-	 * the given collection of {@link Geometry}s.
-	 * 
-	 * @param polys a collection of {@link Polygonal} {@link Geometry}s
-	 */
-	public CascadedPolygonUnion(Collection polys)
-	{
-		this.inputPolys = polys;
-		// guard against null input
-		if (inputPolys == null) 
-		  inputPolys = new ArrayList();
-	}
-	
+  /**
+   * Creates a new instance to union
+   * the given collection of {@link Geometry}s.
+   * 
+   * @param polys a collection of {@link Polygonal} {@link Geometry}s
+   */
+  public CascadedPolygonUnion(Collection polys)
+  {
+    this(polys, UnionFunction.CLASSIC);
+  }
+  
+	 /**
+   * Creates a new instance to union
+   * the given collection of {@link Geometry}s.
+   * 
+   * @param polys a collection of {@link Polygonal} {@link Geometry}s
+   */
+  public CascadedPolygonUnion(Collection polys, UnionFunction unionFun)
+  {
+    this.inputPolys = polys;
+    this.unionFun = unionFun;
+    // guard against null input
+    if (inputPolys == null) 
+      inputPolys = new ArrayList();
+  }
   /**
    * The effectiveness of the index is somewhat sensitive
    * to the node capacity.  
@@ -169,25 +193,9 @@ public class CascadedPolygonUnion
   		if (union == null)
   			union = g.copy();
   		else
-  			union = union.union(g);
+  			union = unionFun.union(union, g);
   	}
   	return union;
-  }
-  
-  private Geometry bufferUnion(List geoms)
-  {
-  	GeometryFactory factory = ((Geometry) geoms.get(0)).getFactory();
-  	Geometry gColl = factory.buildGeometry(geoms);
-  	Geometry unionAll = gColl.buffer(0.0);
-    return unionAll;
-  }
-  
-  private Geometry bufferUnion(Geometry g0, Geometry g1)
-  {
-  	GeometryFactory factory = g0.getFactory();
-  	Geometry gColl = factory.createGeometryCollection(new Geometry[] { g0, g1 } );
-  	Geometry unionAll = gColl.buffer(0.0);
-    return unionAll;
   }
   
   //=======================================
@@ -308,13 +316,8 @@ public class CascadedPolygonUnion
   	if (g0.getNumGeometries() <= 1 && g1.getNumGeometries() <= 1)
   		return unionActual(g0, g1);
   	
-  	// for testing...
-//  	if (true) return g0.union(g1);
-  	
   	Envelope commonEnv = g0Env.intersection(g1Env);
   	return unionUsingEnvelopeIntersection(g0, g1, commonEnv);
-  	
-//  	return UnionInteracting.union(g0, g1);
   }
   
   
@@ -383,7 +386,8 @@ public class CascadedPolygonUnion
   	*/
   	
   	//return bufferUnion(g0, g1);
-  	return restrictToPolygons(g0.union(g1));
+    Geometry union = unionFun.union(g0,  g1);
+  	return restrictToPolygons(union);
   }
   
   /**
