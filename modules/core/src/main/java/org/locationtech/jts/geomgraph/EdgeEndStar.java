@@ -24,6 +24,7 @@ import java.util.TreeMap;
 import org.locationtech.jts.algorithm.BoundaryNodeRule;
 import org.locationtech.jts.algorithm.locate.SimplePointInAreaLocator;
 import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Location;
 import org.locationtech.jts.geom.TopologyException;
 import org.locationtech.jts.util.Assert;
@@ -113,9 +114,9 @@ abstract public class EdgeEndStar
     return (EdgeEnd) edgeList.get(iNextCW);
   }
 
-  public void computeLabelling(GeometryGraph[] geomGraph)
+  public void computeLabelling(Geometry[] geom, BoundaryNodeRule boundaryNodeRule )
   {
-    computeEdgeEndLabels(geomGraph[0].getBoundaryNodeRule());
+    computeEdgeEndLabels(boundaryNodeRule);
     // Propagate side labels  around the edges in the star
     // for each parent Geometry
 //Debug.print(this);
@@ -177,7 +178,7 @@ abstract public class EdgeEndStar
           }
           else {
             Coordinate p = e.getCoordinate();
-            loc = getLocation(geomi, p, geomGraph);
+            loc = getLocation(geomi, p, geom[geomi]);
           }
           label.setAllLocationsIfNull(geomi, loc);
         }
@@ -197,18 +198,18 @@ abstract public class EdgeEndStar
     }
   }
   
-  private int getLocation(int geomIndex, Coordinate p, GeometryGraph[] geom)
+  private int getLocation(int geomIndex, Coordinate p, Geometry geom)
   {
     // compute location only on demand
     if (ptInAreaLocation[geomIndex] == Location.NONE) {
-      ptInAreaLocation[geomIndex] = SimplePointInAreaLocator.locate(p, geom[geomIndex].getGeometry());
+      ptInAreaLocation[geomIndex] = SimplePointInAreaLocator.locate(p, geom);
     }
     return ptInAreaLocation[geomIndex];
   }
 
-  public boolean isAreaLabelsConsistent(GeometryGraph geomGraph)
+  public boolean isAreaLabelsConsistent(BoundaryNodeRule boundaryNodeRule)
   {
-    computeEdgeEndLabels(geomGraph.getBoundaryNodeRule());
+    computeEdgeEndLabels(boundaryNodeRule);
     return checkAreaLabelsConsistent(0);
   }
 

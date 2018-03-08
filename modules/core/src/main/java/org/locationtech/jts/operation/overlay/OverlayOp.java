@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.locationtech.jts.algorithm.BoundaryNodeRule;
 import org.locationtech.jts.algorithm.PointLocator;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
@@ -209,7 +210,7 @@ public class OverlayOp
     List baseSplitEdges = new ArrayList();
     arg[0].computeSplitEdges(baseSplitEdges);
     arg[1].computeSplitEdges(baseSplitEdges);
-    List splitEdges = baseSplitEdges;
+    
     // add the noded edges to this result graph
     insertUniqueEdges(baseSplitEdges);
 
@@ -431,7 +432,7 @@ public class OverlayOp
     for (Iterator nodeit = graph.getNodes().iterator(); nodeit.hasNext(); ) {
       Node node = (Node) nodeit.next();
 //if (node.getCoordinate().equals(new Coordinate(222, 100)) ) Debug.addWatch(node.getEdges());
-      node.getEdges().computeLabelling(arg);
+      node.getEdges().computeLabelling(argGeom, BoundaryNodeRule.OGC_SFS_BOUNDARY_RULE);
     }
     mergeSymLabels();
     updateNodeLabelling();

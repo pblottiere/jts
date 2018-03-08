@@ -106,7 +106,7 @@ public class ConsistentAreaTester {
   {
     for (Iterator nodeIt = nodeGraph.getNodeIterator(); nodeIt.hasNext(); ) {
       RelateNode node = (RelateNode) nodeIt.next();
-      if (! node.getEdges().isAreaLabelsConsistent(geomGraph)) {
+      if (! node.getEdges().isAreaLabelsConsistent(geomGraph.getBoundaryNodeRule())) {
         invalidPoint = node.getCoordinate().copy();
         return false;
       }

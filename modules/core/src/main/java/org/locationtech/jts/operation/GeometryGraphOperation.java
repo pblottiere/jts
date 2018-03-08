@@ -34,6 +34,7 @@ public class GeometryGraphOperation
    * The operation args into an array so they can be accessed by index
    */
   protected GeometryGraph[] arg;  // the arg(s) of the operation
+  protected Geometry[] argGeom;  // the arg(s) of the operation
 
   public GeometryGraphOperation(Geometry g0, Geometry g1)
   {
@@ -51,6 +52,9 @@ public class GeometryGraphOperation
     else
       setComputationPrecision(g1.getPrecisionModel());
 
+    argGeom = new Geometry[2];
+    argGeom[0] = g0;
+    argGeom[1] = g1;
     arg = new GeometryGraph[2];
     arg[0] = new GeometryGraph(0, g0, boundaryNodeRule);
     arg[1] = new GeometryGraph(1, g1, boundaryNodeRule);

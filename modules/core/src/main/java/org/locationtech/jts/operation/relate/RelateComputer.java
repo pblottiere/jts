@@ -285,9 +285,12 @@ public class RelateComputer
 
   private void labelNodeEdges()
   {
+    Geometry[] argGeom = new Geometry[] {
+      arg[0].getGeometry(), arg[1].getGeometry()
+    };
     for (Iterator ni = nodes.iterator(); ni.hasNext(); ) {
       RelateNode node = (RelateNode) ni.next();
-      node.getEdges().computeLabelling(arg);
+      node.getEdges().computeLabelling(argGeom, arg[0].getBoundaryNodeRule());
 //Debug.print(node.getEdges());
 //node.print(System.out);
     }

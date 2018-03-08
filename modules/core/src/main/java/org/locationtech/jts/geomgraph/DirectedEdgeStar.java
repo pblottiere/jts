@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.locationtech.jts.algorithm.BoundaryNodeRule;
+import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Location;
 import org.locationtech.jts.geom.TopologyException;
 import org.locationtech.jts.util.Assert;
@@ -104,10 +106,10 @@ public class DirectedEdgeStar
    * Compute the labelling for all dirEdges in this star, as well
    * as the overall labelling
    */
-  public void computeLabelling(GeometryGraph[] geom)
+  public void computeLabelling(Geometry[] geom, BoundaryNodeRule boundaryNodeRule)
   {
 //Debug.print(this);
-    super.computeLabelling(geom);
+    super.computeLabelling(geom, boundaryNodeRule);
 
     // determine the overall labelling for this DirectedEdgeStar
     // (i.e. for the node it is based at)
