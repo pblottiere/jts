@@ -18,11 +18,14 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.locationtech.jts.algorithm.BoundaryNodeRule;
+import org.locationtech.jts.algorithm.LineIntersector;
 import org.locationtech.jts.algorithm.PointLocator;
+import org.locationtech.jts.algorithm.RobustLineIntersector;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Location;
+import org.locationtech.jts.geom.PrecisionModel;
 import org.locationtech.jts.geom.TopologyException;
 import org.locationtech.jts.geomgraph.Depth;
 import org.locationtech.jts.geomgraph.DirectedEdge;
@@ -30,6 +33,7 @@ import org.locationtech.jts.geomgraph.DirectedEdgeStar;
 import org.locationtech.jts.geomgraph.Edge;
 import org.locationtech.jts.geomgraph.EdgeList;
 import org.locationtech.jts.geomgraph.EdgeNodingValidator;
+import org.locationtech.jts.geomgraph.GeometryGraph;
 import org.locationtech.jts.geomgraph.Label;
 import org.locationtech.jts.geomgraph.Node;
 import org.locationtech.jts.geomgraph.PlanarGraph;
@@ -44,7 +48,6 @@ import org.locationtech.jts.util.Assert;
  * @version 1.7
  */
 public class OverlayOp
-  extends GeometryGraphOperation
 {
 /**
  * The spatial functions supported by this class.
@@ -140,13 +143,16 @@ public class OverlayOp
     }
     return false;
   }
-
+  
+  private Geometry[] argGeom;  // the arg geometries
+  private GeometryGraph[] geomGraph;  // the arg(s) of the operation
+  
+  private final LineIntersector li = new RobustLineIntersector();
   private final PointLocator ptLocator = new PointLocator();
   private GeometryFactory geomFact;
   private Geometry resultGeom;
 
   private PlanarGraph graph;
-  private EdgeList edgeList     = new EdgeList();
 
   private List resultPolyList   = new ArrayList();
   private List resultLineList   = new ArrayList();
@@ -160,7 +166,16 @@ public class OverlayOp
    * @param g1 the second geometry argument
    */
   public OverlayOp(Geometry g0, Geometry g1) {
-    super(g0, g1);
+
+    PrecisionModel resultPrecisionModel = computationPrecision(g0, g1);
+    li.setPrecisionModel(resultPrecisionModel);
+    
+    argGeom = new Geometry[] { g0, g1 };
+    
+    geomGraph = new GeometryGraph[2];
+    geomGraph[0] = new GeometryGraph(0, g0);
+    geomGraph[1] = new GeometryGraph(1, g1);
+    
     graph = new PlanarGraph(new OverlayNodeFactory());
     /**
      * Use factory of primary geometry.
@@ -170,6 +185,18 @@ public class OverlayOp
     geomFact = g0.getFactory();
   }
 
+  private PrecisionModel computationPrecision(Geometry g0, Geometry g1)
+  {
+    // use the most precise model for the result
+    PrecisionModel g0pm = g0.getPrecisionModel();
+    PrecisionModel g1pm = g1.getPrecisionModel();
+    if (g0pm.compareTo(g1pm) >= 0) 
+      return g0pm;
+    return g1pm;
+  }
+  
+  public Geometry getArgGeometry(int i) { return argGeom[i]; }
+  
   /**
    * Gets the result of the overlay for a given overlay operation.
    * <p>
@@ -201,21 +228,20 @@ public class OverlayOp
     copyPoints(1);
 
     // node the input Geometries
-    arg[0].computeSelfNodes(li, false);
-    arg[1].computeSelfNodes(li, false);
+    geomGraph[0].computeSelfNodes(li, false);
+    geomGraph[1].computeSelfNodes(li, false);
 
     // compute intersections between edges of the two input geometries
-    arg[0].computeEdgeIntersections(arg[1], li, true);
+    geomGraph[0].computeEdgeIntersections(geomGraph[1], li, true);
 
     List baseSplitEdges = new ArrayList();
-    arg[0].computeSplitEdges(baseSplitEdges);
-    arg[1].computeSplitEdges(baseSplitEdges);
+    geomGraph[0].computeSplitEdges(baseSplitEdges);
+    geomGraph[1].computeSplitEdges(baseSplitEdges);
     
     // add the noded edges to this result graph
-    insertUniqueEdges(baseSplitEdges);
-
-    computeLabelsFromDepths();
-    replaceCollapsedEdges();
+    EdgeList edgeList = insertUniqueEdges(baseSplitEdges);
+    computeLabelsFromDepths(edgeList);
+    replaceCollapsedEdges(edgeList);
 
 //Debug.println(edgeList);
 
@@ -261,12 +287,14 @@ public class OverlayOp
     resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
   }
 
-  private void insertUniqueEdges(List edges)
+  private EdgeList insertUniqueEdges(List edges)
   {
+    EdgeList edgeList = new EdgeList();
     for (Iterator i = edges.iterator(); i.hasNext(); ) {
       Edge e = (Edge) i.next();
-      insertUniqueEdge(e);
+      insertUniqueEdge(e, edgeList);
     }
+    return edgeList;
   }
   /**
    * Insert an edge from one of the noded input graphs.
@@ -274,8 +302,9 @@ public class OverlayOp
    * identical edge already exists.
    * If so, the edge is not inserted, but its label is merged
    * with the existing edge.
+   * @param edgeList 
    */
-  protected void insertUniqueEdge(Edge e)
+  private void insertUniqueEdge(Edge e, EdgeList edgeList)
   {
 //<FIX> MD 8 Oct 03  speed up identical edge lookup
     // fast lookup
@@ -344,7 +373,7 @@ public class OverlayOp
    * (i.e. a depth of 0 corresponds to a Location of EXTERIOR,
    * a depth of 1 corresponds to INTERIOR)
    */
-  private void computeLabelsFromDepths()
+  private void computeLabelsFromDepths(EdgeList edgeList)
   {
     for (Iterator it = edgeList.iterator(); it.hasNext(); ) {
       Edge e = (Edge) it.next();
@@ -389,7 +418,7 @@ public class OverlayOp
    * If edges which have undergone dimensional collapse are found,
    * replace them with a new edge which is a L edge
    */
-  private void replaceCollapsedEdges()
+  private void replaceCollapsedEdges(EdgeList edgeList)
   {
     List newEdges = new ArrayList();
     for (Iterator it = edgeList.iterator(); it.hasNext(); ) {
@@ -413,7 +442,7 @@ public class OverlayOp
    */
   private void copyPoints(int argIndex)
   {
-    for (Iterator i = arg[argIndex].getNodeIterator(); i.hasNext(); ) {
+    for (Iterator i = geomGraph[argIndex].getNodeIterator(); i.hasNext(); ) {
       Node graphNode = (Node) i.next();
       Node newNode = graph.addNode(graphNode.getCoordinate());
       newNode.setLabel(argIndex, graphNode.getLabel().getLocation(argIndex));
@@ -510,7 +539,7 @@ public class OverlayOp
    */
   private void labelIncompleteNode(Node n, int targetIndex)
   {
-    int loc = ptLocator.locate(n.getCoordinate(), arg[targetIndex].getGeometry());
+    int loc = ptLocator.locate(n.getCoordinate(), argGeom[targetIndex]);
   	
   	// MD - 2008-10-24 - experimental for now
 //    int loc = arg[targetIndex].locate(n.getCoordinate());
@@ -610,7 +639,7 @@ public class OverlayOp
     
     //*
     if (geomList.isEmpty())
-    	return createEmptyResult(opcode, arg[0].getGeometry(), arg[1].getGeometry(), geomFact);
+    	return createEmptyResult(opcode, argGeom[0], argGeom[1], geomFact);
     //*/
     
     // build the most specific geometry possible
