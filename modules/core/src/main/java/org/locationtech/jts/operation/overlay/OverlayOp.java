@@ -38,7 +38,6 @@ import org.locationtech.jts.geomgraph.Label;
 import org.locationtech.jts.geomgraph.Node;
 import org.locationtech.jts.geomgraph.PlanarGraph;
 import org.locationtech.jts.geomgraph.Position;
-import org.locationtech.jts.operation.GeometryGraphOperation;
 import org.locationtech.jts.util.Assert;
 
 /**
@@ -144,15 +143,14 @@ public class OverlayOp
     return false;
   }
   
-  private Geometry[] inputGeom;  // the arg geometries
-  
-  //private final LineIntersector li = new RobustLineIntersector();
-  private PrecisionModel resultPrecisionModel;
-  private final PointLocator ptLocator = new PointLocator();
+  private Geometry[] inputGeom;  // the input geometries
   private GeometryFactory geomFact;
+  
+  private PrecisionModel resultPrecisionModel;
   private Geometry resultGeom;
 
   private PlanarGraph graph;
+  private final PointLocator ptLocator = new PointLocator();
 
   private List resultPolyList   = new ArrayList();
   private List resultLineList   = new ArrayList();
@@ -228,7 +226,7 @@ public class OverlayOp
     PrecisionModel nodePrecisionModel = resultPrecisionModel;
     List nodedInputEdges = nodeEdges(geomGraph0, geomGraph1, nodePrecisionModel);
     
-    // add the noded edges to this result graph
+    // add the noded edges to the result graph
     EdgeList edgeList = insertUniqueEdges(nodedInputEdges);
     computeLabelsFromDepths(edgeList);
     replaceCollapsedEdges(edgeList);
@@ -254,6 +252,13 @@ public class OverlayOp
 //Debug.printWatch();
 //nodeMap.print(System.out);
 
+    buildOutput(opCode);
+
+    // gather the results from all calculations into a single Geometry for the result set
+    resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
+  }
+
+  private void buildOutput(int opCode) {
     /**
      * The ordering of building the result Geometries is important.
      * Areas must be built before lines, which must be built before points.
@@ -272,9 +277,6 @@ public class OverlayOp
 
     PointBuilder pointBuilder = new PointBuilder(this, geomFact, ptLocator);
     resultPointList = pointBuilder.build(opCode);
-
-    // gather the results from all calculations into a single Geometry for the result set
-    resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
   }
 
   private List nodeEdges(GeometryGraph geomGraph0, GeometryGraph geomGraph1, PrecisionModel precisionModel) {
