@@ -258,6 +258,23 @@ public class OverlayOp
     resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
   }
 
+
+  private List nodeEdges(GeometryGraph geomGraph0, GeometryGraph geomGraph1, PrecisionModel precisionModel) {
+    LineIntersector li = new RobustLineIntersector();
+    li.setPrecisionModel(precisionModel);
+    
+    // node the input Geometries
+    geomGraph0.computeSelfNodes(li, false);
+    geomGraph1.computeSelfNodes(li, false);
+
+    // compute intersections between edges of the two input geometries
+    geomGraph0.computeEdgeIntersections(geomGraph1, li, true);
+
+    List baseSplitEdges = new ArrayList();
+    geomGraph0.computeSplitEdges(baseSplitEdges);
+    geomGraph1.computeSplitEdges(baseSplitEdges);
+    return baseSplitEdges;
+  }
   private void buildOutput(int opCode) {
     /**
      * The ordering of building the result Geometries is important.
@@ -277,23 +294,6 @@ public class OverlayOp
 
     PointBuilder pointBuilder = new PointBuilder(this, geomFact, ptLocator);
     resultPointList = pointBuilder.build(opCode);
-  }
-
-  private List nodeEdges(GeometryGraph geomGraph0, GeometryGraph geomGraph1, PrecisionModel precisionModel) {
-    LineIntersector li = new RobustLineIntersector();
-    li.setPrecisionModel(precisionModel);
-    
-    // node the input Geometries
-    geomGraph0.computeSelfNodes(li, false);
-    geomGraph1.computeSelfNodes(li, false);
-
-    // compute intersections between edges of the two input geometries
-    geomGraph0.computeEdgeIntersections(geomGraph1, li, true);
-
-    List baseSplitEdges = new ArrayList();
-    geomGraph0.computeSplitEdges(baseSplitEdges);
-    geomGraph1.computeSplitEdges(baseSplitEdges);
-    return baseSplitEdges;
   }
 
   /**
