@@ -144,10 +144,10 @@ public class OverlayOp
     return false;
   }
   
-  private Geometry[] argGeom;  // the arg geometries
-  private GeometryGraph[] geomGraph;  // the arg(s) of the operation
+  private Geometry[] inputGeom;  // the arg geometries
   
-  private final LineIntersector li = new RobustLineIntersector();
+  //private final LineIntersector li = new RobustLineIntersector();
+  private PrecisionModel resultPrecisionModel;
   private final PointLocator ptLocator = new PointLocator();
   private GeometryFactory geomFact;
   private Geometry resultGeom;
@@ -167,14 +167,9 @@ public class OverlayOp
    */
   public OverlayOp(Geometry g0, Geometry g1) {
 
-    PrecisionModel resultPrecisionModel = computationPrecision(g0, g1);
-    li.setPrecisionModel(resultPrecisionModel);
+    resultPrecisionModel = computationPrecision(g0, g1);
     
-    argGeom = new Geometry[] { g0, g1 };
-    
-    geomGraph = new GeometryGraph[2];
-    geomGraph[0] = new GeometryGraph(0, g0);
-    geomGraph[1] = new GeometryGraph(1, g1);
+    inputGeom = new Geometry[] { g0, g1 };
     
     graph = new PlanarGraph(new OverlayNodeFactory());
     /**
@@ -195,7 +190,7 @@ public class OverlayOp
     return g1pm;
   }
   
-  public Geometry getArgGeometry(int i) { return argGeom[i]; }
+  public Geometry getArgGeometry(int i) { return inputGeom[i]; }
   
   /**
    * Gets the result of the overlay for a given overlay operation.
@@ -221,25 +216,20 @@ public class OverlayOp
 
   private void computeOverlay(int opCode)
   {
+    GeometryGraph[] geomGraph = new GeometryGraph[2];
+    GeometryGraph geomGraph0 = new GeometryGraph(0, inputGeom[0]);
+    GeometryGraph geomGraph1 = new GeometryGraph(1, inputGeom[1]);
     // copy points from input Geometries.
     // This ensures that any Point geometries
     // in the input are considered for inclusion in the result set
-    copyPoints(0);
-    copyPoints(1);
+    copyPoints(0, geomGraph0);
+    copyPoints(1, geomGraph1);
 
-    // node the input Geometries
-    geomGraph[0].computeSelfNodes(li, false);
-    geomGraph[1].computeSelfNodes(li, false);
-
-    // compute intersections between edges of the two input geometries
-    geomGraph[0].computeEdgeIntersections(geomGraph[1], li, true);
-
-    List baseSplitEdges = new ArrayList();
-    geomGraph[0].computeSplitEdges(baseSplitEdges);
-    geomGraph[1].computeSplitEdges(baseSplitEdges);
+    PrecisionModel nodePrecisionModel = resultPrecisionModel;
+    List nodedInputEdges = nodeEdges(geomGraph0, geomGraph1, nodePrecisionModel);
     
     // add the noded edges to this result graph
-    EdgeList edgeList = insertUniqueEdges(baseSplitEdges);
+    EdgeList edgeList = insertUniqueEdges(nodedInputEdges);
     computeLabelsFromDepths(edgeList);
     replaceCollapsedEdges(edgeList);
 
@@ -287,6 +277,42 @@ public class OverlayOp
     resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
   }
 
+  private List nodeEdges(GeometryGraph geomGraph0, GeometryGraph geomGraph1, PrecisionModel precisionModel) {
+    LineIntersector li = new RobustLineIntersector();
+    li.setPrecisionModel(precisionModel);
+    
+    // node the input Geometries
+    geomGraph0.computeSelfNodes(li, false);
+    geomGraph1.computeSelfNodes(li, false);
+
+    // compute intersections between edges of the two input geometries
+    geomGraph0.computeEdgeIntersections(geomGraph1, li, true);
+
+    List baseSplitEdges = new ArrayList();
+    geomGraph0.computeSplitEdges(baseSplitEdges);
+    geomGraph1.computeSplitEdges(baseSplitEdges);
+    return baseSplitEdges;
+  }
+
+  /**
+   * Copy all nodes from an arg geometry into this graph.
+   * The node label in the arg geometry overrides any previously computed
+   * label for that argIndex.
+   * (E.g. a node may be an intersection node with
+   * a previously computed label of BOUNDARY,
+   * but in the original arg Geometry it is actually
+   * in the interior due to the Boundary Determination Rule)
+   * @param geomGraph 
+   */
+  private void copyPoints(int argIndex, GeometryGraph geomGraph)
+  {
+    for (Iterator i = geomGraph.getNodeIterator(); i.hasNext(); ) {
+      Node graphNode = (Node) i.next();
+      Node newNode = graph.addNode(graphNode.getCoordinate());
+      newNode.setLabel(argIndex, graphNode.getLabel().getLocation(argIndex));
+    }
+  }
+  
   private EdgeList insertUniqueEdges(List edges)
   {
     EdgeList edgeList = new EdgeList();
@@ -431,23 +457,7 @@ public class OverlayOp
     }
     edgeList.addAll(newEdges);
   }
-  /**
-   * Copy all nodes from an arg geometry into this graph.
-   * The node label in the arg geometry overrides any previously computed
-   * label for that argIndex.
-   * (E.g. a node may be an intersection node with
-   * a previously computed label of BOUNDARY,
-   * but in the original arg Geometry it is actually
-   * in the interior due to the Boundary Determination Rule)
-   */
-  private void copyPoints(int argIndex)
-  {
-    for (Iterator i = geomGraph[argIndex].getNodeIterator(); i.hasNext(); ) {
-      Node graphNode = (Node) i.next();
-      Node newNode = graph.addNode(graphNode.getCoordinate());
-      newNode.setLabel(argIndex, graphNode.getLabel().getLocation(argIndex));
-    }
-  }
+
 
   /**
    * Compute initial labelling for all DirectedEdges at each node.
@@ -461,7 +471,7 @@ public class OverlayOp
     for (Iterator nodeit = graph.getNodes().iterator(); nodeit.hasNext(); ) {
       Node node = (Node) nodeit.next();
 //if (node.getCoordinate().equals(new Coordinate(222, 100)) ) Debug.addWatch(node.getEdges());
-      node.getEdges().computeLabelling(argGeom, BoundaryNodeRule.OGC_SFS_BOUNDARY_RULE);
+      node.getEdges().computeLabelling(inputGeom, BoundaryNodeRule.OGC_SFS_BOUNDARY_RULE);
     }
     mergeSymLabels();
     updateNodeLabelling();
@@ -539,7 +549,7 @@ public class OverlayOp
    */
   private void labelIncompleteNode(Node n, int targetIndex)
   {
-    int loc = ptLocator.locate(n.getCoordinate(), argGeom[targetIndex]);
+    int loc = ptLocator.locate(n.getCoordinate(), inputGeom[targetIndex]);
   	
   	// MD - 2008-10-24 - experimental for now
 //    int loc = arg[targetIndex].locate(n.getCoordinate());
@@ -639,7 +649,7 @@ public class OverlayOp
     
     //*
     if (geomList.isEmpty())
-    	return createEmptyResult(opcode, argGeom[0], argGeom[1], geomFact);
+    	return createEmptyResult(opcode, inputGeom[0], inputGeom[1], geomFact);
     //*/
     
     // build the most specific geometry possible
