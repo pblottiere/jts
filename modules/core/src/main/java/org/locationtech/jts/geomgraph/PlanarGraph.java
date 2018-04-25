@@ -122,9 +122,12 @@ public class PlanarGraph
   }
 
   /**
-   * Link the DirectedEdges at the nodes of the graph.
-   * This allows clients to link only a subset of nodes in the graph, for
-   * efficiency (because they know that only a subset is of interest).
+   * Link the result DirectedEdges at the nodes of the graph.
+   * This allows linking only a subset of nodes in the graph, for
+   * efficiency.
+   * 
+   * @see DirectedEdge#setInResult(boolean)
+   * 
    */
   public void linkResultDirectedEdges()
   {
@@ -134,9 +137,7 @@ public class PlanarGraph
     }
   }
   /**
-   * Link the DirectedEdges at the nodes of the graph.
-   * This allows clients to link only a subset of nodes in the graph, for
-   * efficiency (because they know that only a subset is of interest).
+   * Link all the DirectedEdges at the nodes of the graph.
    */
   public void linkAllDirectedEdges()
   {
