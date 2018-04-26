@@ -164,16 +164,12 @@ public class OverlayOp
    * @param g1 the second geometry argument
    */
   public OverlayOp(Geometry g0, Geometry g1) {
-
-    resultPrecisionModel = computationPrecision(g0, g1);
-    
     inputGeom = new Geometry[] { g0, g1 };
-    
-    graph = new PlanarGraph(new OverlayNodeFactory());
+    resultPrecisionModel = computationPrecision(g0, g1);
     /**
      * Use factory of primary geometry.
      * Note that this does NOT handle mixed-precision arguments
-     * where the second arg has greater precision than the first.
+     * where the second geometry has greater precision than the first.
      */
     geomFact = g0.getFactory();
   }
@@ -214,20 +210,13 @@ public class OverlayOp
 
   private void computeOverlay(int opCode)
   {
-    GeometryGraph[] geomGraph = new GeometryGraph[2];
-    GeometryGraph geomGraph0 = new GeometryGraph(0, inputGeom[0]);
-    GeometryGraph geomGraph1 = new GeometryGraph(1, inputGeom[1]);
-    // copy points from input Geometries.
-    // This ensures that any Point geometries
-    // in the input are considered for inclusion in the result set
-    copyPoints(0, geomGraph0);
-    copyPoints(1, geomGraph1);
-
-    PrecisionModel nodePrecisionModel = resultPrecisionModel;
-    List nodedInputEdges = nodeEdges(geomGraph0, geomGraph1, nodePrecisionModel);
+    graph = new PlanarGraph(new OverlayNodeFactory());
+    // Noding may be done under different precision model
+    PrecisionModel nodingPrecisionModel = resultPrecisionModel;
     
-    // add the noded edges to the result graph
-    EdgeList edgeList = insertUniqueEdges(nodedInputEdges);
+    List nodedInputEdges = nodeEdges(inputGeom, graph, nodingPrecisionModel);
+    
+    EdgeList edgeList = mergeDuplicateEdges(nodedInputEdges);
     computeLabelsFromDepths(edgeList);
     replaceCollapsedEdges(edgeList);
 
@@ -239,12 +228,13 @@ public class OverlayOp
      * This test is slow, but necessary in order to catch robustness failure 
      * situations.
      * If an exception is thrown because of a noding failure, 
-     * then snapping will be performed, which will hopefully avoid the problem.
+     * then snapping can be performed, which will hopefully avoid the problem.
      * In the future hopefully a faster check can be developed.  
      * 
      */
     EdgeNodingValidator.checkValid(edgeList.getEdges());
 
+    // add the noded edges to the result graph
     graph.addEdges(edgeList.getEdges());
     computeLabelling();
 //Debug.printWatch();
@@ -252,14 +242,23 @@ public class OverlayOp
 //Debug.printWatch();
 //nodeMap.print(System.out);
 
-    buildOutput(opCode);
+    buildOutput(graph, opCode);
 
     // gather the results from all calculations into a single Geometry for the result set
     resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
   }
 
 
-  private List nodeEdges(GeometryGraph geomGraph0, GeometryGraph geomGraph1, PrecisionModel precisionModel) {
+  private List nodeEdges(Geometry[] geom, PlanarGraph graph, PrecisionModel precisionModel) {
+    GeometryGraph geomGraph0 = new GeometryGraph(0, geom[0]);
+    GeometryGraph geomGraph1 = new GeometryGraph(1, geom[1]);
+    
+    // copy points from input Geometries.
+    // This ensures that any Point geometries
+    // in the input are considered for inclusion in the result set
+    copyPoints(0, geomGraph0, graph);
+    copyPoints(1, geomGraph1, graph);
+
     LineIntersector li = new RobustLineIntersector();
     li.setPrecisionModel(precisionModel);
     
@@ -275,7 +274,28 @@ public class OverlayOp
     geomGraph1.computeSplitEdges(baseSplitEdges);
     return baseSplitEdges;
   }
-  private void buildOutput(int opCode) {
+  
+  /**
+   * Copy all nodes from an arg geometry into this graph.
+   * The node label in the arg geometry overrides any previously computed
+   * label for that argIndex.
+   * (E.g. a node may be an intersection node with
+   * a previously computed label of BOUNDARY,
+   * but in the original arg Geometry it is actually
+   * in the interior due to the Boundary Determination Rule)
+   * @param geomGraph 
+   * @param graph2 
+   */
+  private void copyPoints(int argIndex, GeometryGraph geomGraph, PlanarGraph graph)
+  {
+    for (Iterator i = geomGraph.getNodeIterator(); i.hasNext(); ) {
+      Node graphNode = (Node) i.next();
+      Node newNode = graph.addNode(graphNode.getCoordinate());
+      newNode.setLabel(argIndex, graphNode.getLabel().getLocation(argIndex));
+    }
+  }
+  
+  private void buildOutput(PlanarGraph graph, int opCode) {
     /**
      * The ordering of building the result Geometries is important.
      * Areas must be built before lines, which must be built before points.
@@ -295,32 +315,13 @@ public class OverlayOp
     PointBuilder pointBuilder = new PointBuilder(this, geomFact, ptLocator);
     resultPointList = pointBuilder.build(opCode);
   }
-
-  /**
-   * Copy all nodes from an arg geometry into this graph.
-   * The node label in the arg geometry overrides any previously computed
-   * label for that argIndex.
-   * (E.g. a node may be an intersection node with
-   * a previously computed label of BOUNDARY,
-   * but in the original arg Geometry it is actually
-   * in the interior due to the Boundary Determination Rule)
-   * @param geomGraph 
-   */
-  private void copyPoints(int argIndex, GeometryGraph geomGraph)
-  {
-    for (Iterator i = geomGraph.getNodeIterator(); i.hasNext(); ) {
-      Node graphNode = (Node) i.next();
-      Node newNode = graph.addNode(graphNode.getCoordinate());
-      newNode.setLabel(argIndex, graphNode.getLabel().getLocation(argIndex));
-    }
-  }
   
-  private EdgeList insertUniqueEdges(List edges)
+  private EdgeList mergeDuplicateEdges(List edges)
   {
     EdgeList edgeList = new EdgeList();
     for (Iterator i = edges.iterator(); i.hasNext(); ) {
       Edge e = (Edge) i.next();
-      insertUniqueEdge(e, edgeList);
+      mergeDuplicateEdge(e, edgeList);
     }
     return edgeList;
   }
@@ -332,7 +333,7 @@ public class OverlayOp
    * with the existing edge.
    * @param edgeList 
    */
-  private void insertUniqueEdge(Edge e, EdgeList edgeList)
+  private void mergeDuplicateEdge(Edge e, EdgeList edgeList)
   {
 //<FIX> MD 8 Oct 03  speed up identical edge lookup
     // fast lookup
