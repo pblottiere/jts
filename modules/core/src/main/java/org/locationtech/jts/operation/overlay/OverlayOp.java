@@ -14,6 +14,7 @@
 package org.locationtech.jts.operation.overlay;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
@@ -34,11 +35,15 @@ import org.locationtech.jts.geomgraph.Edge;
 import org.locationtech.jts.geomgraph.EdgeList;
 import org.locationtech.jts.geomgraph.EdgeNodingValidator;
 import org.locationtech.jts.geomgraph.GeometryGraph;
+import org.locationtech.jts.geomgraph.GeometrySRNoder;
 import org.locationtech.jts.geomgraph.Label;
 import org.locationtech.jts.geomgraph.Node;
 import org.locationtech.jts.geomgraph.PlanarGraph;
 import org.locationtech.jts.geomgraph.Position;
+import org.locationtech.jts.noding.NodedSegmentString;
+import org.locationtech.jts.noding.SegmentString;
 import org.locationtech.jts.util.Assert;
+import org.locationtech.jts.util.Debug;
 
 /**
  * Computes the geometric overlay of two {@link Geometry}s.  The overlay
@@ -87,6 +92,14 @@ public class OverlayOp
   {
     OverlayOp gov = new OverlayOp(geom0, geom1);
     Geometry geomOv = gov.getResultGeometry(opCode);
+    return geomOv;
+  }
+  
+  public static Geometry overlayOp(Geometry geom0, Geometry geom1, int opCode, PrecisionModel nodingPM)
+  {
+    OverlayOp ov = new OverlayOp(geom0, geom1);
+    ov.setNodingPrecision(nodingPM);
+    Geometry geomOv = ov.getResultGeometry(opCode);
     return geomOv;
   }
 
@@ -146,6 +159,7 @@ public class OverlayOp
   private Geometry[] inputGeom;  // the input geometries
   private GeometryFactory geomFact;
   
+  private PrecisionModel nodingPrecisionModel;
   private PrecisionModel resultPrecisionModel;
   private Geometry resultGeom;
 
@@ -156,6 +170,9 @@ public class OverlayOp
   private List resultLineList   = new ArrayList();
   private List resultPointList  = new ArrayList();
 
+  private boolean useSnapRounding = false;
+
+
   /**
    * Constructs an instance to compute a single overlay operation
    * for the given geometries.
@@ -165,7 +182,9 @@ public class OverlayOp
    */
   public OverlayOp(Geometry g0, Geometry g1) {
     inputGeom = new Geometry[] { g0, g1 };
-    resultPrecisionModel = computationPrecision(g0, g1);
+    resultPrecisionModel = highestPrecision(g0, g1);
+    nodingPrecisionModel = resultPrecisionModel;
+    
     /**
      * Use factory of primary geometry.
      * Note that this does NOT handle mixed-precision arguments
@@ -174,9 +193,13 @@ public class OverlayOp
     geomFact = g0.getFactory();
   }
 
-  private PrecisionModel computationPrecision(Geometry g0, Geometry g1)
+  public void setNodingPrecision(PrecisionModel pm) {
+    nodingPrecisionModel = pm;
+    useSnapRounding  = true;
+  }
+  
+  private static PrecisionModel highestPrecision(Geometry g0, Geometry g1)
   {
-    // use the most precise model for the result
     PrecisionModel g0pm = g0.getPrecisionModel();
     PrecisionModel g1pm = g1.getPrecisionModel();
     if (g0pm.compareTo(g1pm) >= 0) 
@@ -212,27 +235,8 @@ public class OverlayOp
   {
     graph = new PlanarGraph(new OverlayNodeFactory());
     // Noding may be done under different precision model
-    PrecisionModel nodingPrecisionModel = resultPrecisionModel;
     
-    List nodedInputEdges = nodeEdges(inputGeom, graph, nodingPrecisionModel);
-    
-    EdgeList edgeList = mergeDuplicateEdges(nodedInputEdges);
-    computeLabelsFromDepths(edgeList);
-    replaceCollapsedEdges(edgeList);
-
-//Debug.println(edgeList);
-
-    /**
-     * Check that the noding completed correctly.
-     * 
-     * This test is slow, but necessary in order to catch robustness failure 
-     * situations.
-     * If an exception is thrown because of a noding failure, 
-     * then snapping can be performed, which will hopefully avoid the problem.
-     * In the future hopefully a faster check can be developed.  
-     * 
-     */
-    EdgeNodingValidator.checkValid(edgeList.getEdges());
+    EdgeList edgeList = computeNoding();
 
     // add the noded edges to the result graph
     graph.addEdges(edgeList.getEdges());
@@ -246,6 +250,36 @@ public class OverlayOp
 
     // gather the results from all calculations into a single Geometry for the result set
     resultGeom = computeGeometry(resultPointList, resultLineList, resultPolyList, opCode);
+  }
+
+  private EdgeList computeNoding() {
+    List nodedInputEdges;
+    if (useSnapRounding) {
+      nodedInputEdges = nodeEdgesSR(inputGeom, graph, nodingPrecisionModel);
+    }
+    else {
+      nodedInputEdges = nodeEdges(inputGeom, graph, nodingPrecisionModel);  
+    }
+    
+    EdgeList edgeList = mergeDuplicateEdges(nodedInputEdges);
+    computeLabelsFromDepths(edgeList);
+    replaceCollapsedEdges(edgeList);
+
+Debug.println(edgeList);
+
+    /**
+     * Check that the noding completed correctly.
+     * 
+     * This test is slow, but necessary in order to catch robustness failure 
+     * situations.
+     * If an exception is thrown because of a noding failure, 
+     * then snapping can be performed, which will hopefully avoid the problem.
+     * In the future hopefully a faster check can be developed.  
+     * 
+     */
+// TODO: use only for classic noding.  Not needed for SR
+    EdgeNodingValidator.checkValid(edgeList.getEdges());
+    return edgeList;
   }
 
 
@@ -275,6 +309,28 @@ public class OverlayOp
     return baseSplitEdges;
   }
   
+  private List nodeEdgesSR(Geometry[] geom, PlanarGraph graph, PrecisionModel precisionModel) {
+    GeometrySRNoder noder = new GeometrySRNoder(precisionModel);
+    noder.add(geom[0], 0);
+    noder.add(geom[1], 1);
+    Collection nodedSegStrings = noder.node();
+    List edges = toEdgesFromSegmentStrings(nodedSegStrings);
+    return edges;
+  }
+  
+  private static List toEdgesFromSegmentStrings(Collection segStrings) {
+    List edges = new ArrayList();
+    for (Iterator i = segStrings.iterator(); i.hasNext(); ) {
+      SegmentString ss = (SegmentString) i.next();
+      Coordinate[] coords = ss.getCoordinates();
+      Label lbl = (Label) ss.getData();
+      // replicate label, to avoid aliasing on split edges (which have the same label object)
+      Edge edge = new Edge(coords, new Label(lbl));
+      edges.add(edge);
+    }
+    return edges;
+  }
+
   /**
    * Copy all nodes from an arg geometry into this graph.
    * The node label in the arg geometry overrides any previously computed
