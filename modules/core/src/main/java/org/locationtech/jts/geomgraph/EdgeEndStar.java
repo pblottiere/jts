@@ -156,15 +156,7 @@ abstract public class EdgeEndStar
      * Not sure how solve this...  Possibly labelling needs to be split into several phases:
      * area label propagation, symLabel merging, then finally null label resolution.
      */
-    boolean[] hasDimensionalCollapseEdge = { false, false };
-    for (Iterator it = iterator(); it.hasNext(); ) {
-      EdgeEnd e = (EdgeEnd) it.next();
-      Label label = e.getLabel();
-      for (int geomi = 0; geomi < 2; geomi++) {
-        if (label.isLine(geomi) && label.getLocation(geomi) == Location.BOUNDARY)
-          hasDimensionalCollapseEdge[geomi] = true;
-      }
-    }
+    boolean[] hasDimensionalCollapseEdge = hasDimensionalCollapseEdge();
 //Debug.print(this);
     for (Iterator it = iterator(); it.hasNext(); ) {
       EdgeEnd e = (EdgeEnd) it.next();
@@ -187,6 +179,28 @@ abstract public class EdgeEndStar
     }
 //Debug.print(this);
 //Debug.printIfWatch(this);
+  }
+
+  /**
+   * Determines whether any edge originating here
+   * has undergone dimensional collapse
+   * (for each parent geometry).
+   * This is indicated by an edge being labelled as
+   * a Line on the boundary of a geometry.
+   * 
+   * @return the dimensional collapse status for both parent geometries
+   */
+  private boolean[] hasDimensionalCollapseEdge() {
+    boolean[] hasDimensionalCollapseEdge = { false, false };
+    for (Iterator it = iterator(); it.hasNext(); ) {
+      EdgeEnd e = (EdgeEnd) it.next();
+      Label label = e.getLabel();
+      for (int geomi = 0; geomi < 2; geomi++) {
+        if (label.isLine(geomi) && label.getLocation(geomi) == Location.BOUNDARY)
+          hasDimensionalCollapseEdge[geomi] = true;
+      }
+    }
+    return hasDimensionalCollapseEdge;
   }
 
   private void computeEdgeEndLabels(BoundaryNodeRule boundaryNodeRule)
