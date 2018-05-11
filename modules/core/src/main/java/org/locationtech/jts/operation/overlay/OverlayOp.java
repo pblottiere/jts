@@ -264,8 +264,12 @@ public class OverlayOp
     EdgeList edgeList = mergeDuplicateEdges(nodedInputEdges);
     computeLabelsFromDepths(edgeList);
     replaceCollapsedEdges(edgeList);
+    // For now need to remove L edges for SR, due to issues with topology building
+    if (useSnapRounding) {
+      removeLineEdges(edgeList);
+    }
 
-Debug.println(edgeList);
+//Debug.println(edgeList);
 
     /**
      * Check that the noding completed correctly.
@@ -516,6 +520,19 @@ Debug.println(edgeList);
     }
     edgeList.addAll(newEdges);
   }
+  private void removeLineEdges(EdgeList edgeList)
+  {
+    for (Iterator it = edgeList.iterator(); it.hasNext(); ) {
+      Edge e = (Edge) it.next();
+      if (isLineAny(e.getLabel())) {
+//Debug.print(e);
+        it.remove();
+      }
+    }
+  }
+  private static boolean isLineAny(Label lbl) {
+    return lbl.isLine(0) || lbl.isLine(1);
+  }
 
 
   /**
@@ -636,10 +653,11 @@ Debug.println(edgeList);
                 label.getLocation(1, Position.RIGHT),
                 opCode)) {
         de.setInResult(true);
-//Debug.print("in result "); Debug.println(de);
       }
+//Debug.println(( de.isInResult() ? "IN " : "not") + " result " +  de);        
     }
   }
+  
   /**
    * If both a dirEdge and its sym are marked as being in the result, cancel
    * them out.
