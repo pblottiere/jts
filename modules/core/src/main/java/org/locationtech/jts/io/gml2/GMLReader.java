@@ -14,6 +14,8 @@ package org.locationtech.jts.io.gml2;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -23,6 +25,9 @@ import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.GeometryCollection;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.PrecisionModel;
+import org.locationtech.jts.io.gml2.GMLHandler.Handler;
+import org.locationtech.jts.io.gml2.GeometryStrategies.ParseStrategy;
+import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
@@ -111,10 +116,67 @@ public class GMLReader
 		if(geometryFactory == null)
 			geometryFactory = new GeometryFactory();
 
-		GMLHandler gh = new GMLHandler(geometryFactory,null);
+		GMLGeometryExtracterHandler gh = new GMLGeometryExtracterHandler(geometryFactory);
 		parser.parse(new InputSource(reader), (DefaultHandler)gh);
 
 		return gh.getGeometry();
 	}
 
+	static class GMLGeometryExtracterHandler extends DefaultHandler {
+	  private GeometryFactory geometryFactory;
+	  private List geoms = new ArrayList();
+	  private GMLHandler gmlHandler = null;
+
+	  GMLGeometryExtracterHandler(GeometryFactory geometryFactory) {
+	    this.geometryFactory = geometryFactory;
+	  }
+
+	  public Geometry getGeometry() {
+	    if (geoms.size() == 1) return (Geometry) geoms.get(0);
+      // TODO Auto-generated method stub
+      return geometryFactory.buildGeometry(geoms);
+    }
+
+    public void startElement(String uri, String localName, String qName,
+	      Attributes attributes) throws SAXException {
+
+      if (gmlHandler == null && hasGMLStrategy(uri, localName, qName)) {
+        gmlHandler = new GMLHandler(geometryFactory, null);        
+      }
+	    if (gmlHandler != null) {
+	      gmlHandler.startElement(uri, localName, qName, attributes);
+	    }
+	  }
+
+    public void endElement(String uri, String localName, String qName)
+        throws SAXException {
+      if (gmlHandler != null) {
+        gmlHandler.endElement(uri, localName, qName);
+        if (gmlHandler.isGeometryComplete()) {
+          Geometry geom = gmlHandler.getGeometry();
+          geoms.add(geom);
+          gmlHandler = null;
+        }
+      }
+    }
+    
+    public void characters(char[] ch, int start, int length) throws SAXException {
+      if (gmlHandler != null)
+        gmlHandler.characters(ch, start, length);
+    }
+    
+	  private static boolean hasGMLStrategy(String uri, String localName, String qName) {
+	    return null != findGMLStrategy(uri, localName, qName);
+	  }
+    private static ParseStrategy findGMLStrategy(String uri, String localName, String qName) {
+      ParseStrategy ps = GeometryStrategies.findStrategy(uri, localName);
+	    if (ps == null) {
+	      String qn = qName.substring(qName.indexOf(':') + 1, qName.length());
+	      ps = GeometryStrategies.findStrategy(null, qn);
+	    }
+      return ps;
+    }
+	  
+
+	}
 }
